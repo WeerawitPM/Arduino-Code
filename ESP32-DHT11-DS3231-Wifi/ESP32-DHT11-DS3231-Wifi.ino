@@ -5,22 +5,29 @@
 #include <WiFiClient.h>
 
 #include "DHT.h"        // including the library of DHT11 temperature and humidity sensor
-#include "RTClib.h"
 
-#define DHTTYPE DHT11   // DHT 11
-#define dht_dpin 4     // Config DHT on GPIO 6
-
+#define DHTTYPE DHT11
+#define dht_dpin 4
 DHT dht(dht_dpin, DHTTYPE);
+
+#include "RTClib.h"
 RTC_DS3231 rtc;
-
-WiFiMulti wifiMulti;
-
 char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
 String board_id = "001";
 
+WiFiMulti wifiMulti;
+
 void setup(void)
 {
-  Serial.begin(9600);
+  Serial.begin(115200);
+  pinMode(2, OUTPUT);
+
+  Serial.println();
+  for (uint8_t t = 4; t > 0; t--) {
+    Serial.printf("[SETUP] WAIT %d...\n", t);
+    Serial.flush();
+    delay(1000);
+  }
 #ifndef ESP8266
   while (!Serial); // wait for serial port to connect. Needed for native USB
 #endif
@@ -30,24 +37,28 @@ void setup(void)
     Serial.flush();
     while (1) delay(10);
   }
-  /*  Switch of sensors reading indicator Establishment */
-  pinMode(5, OUTPUT);
-  pinMode(2, OUTPUT);
-  /* WiFi Connection Establishment */
-  Serial.println();
-  for (uint8_t t = 4; t > 0; t--) {
-    Serial.printf("[SETUP] WAIT %d...\n", t);
-    Serial.flush();
-    delay(1000);
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC lost power, let's set the time!");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
   }
+
   WiFi.mode(WIFI_STA);
   wifiMulti.addAP("MiwaMew", "1122334455");  // Replace SSID & PASSWORD by Your WiFi Network Name & Pass
-  /* DHT Establishment */
-  dht.begin();
-  Serial.println("Humidity and temperature \n\n");
-  Serial.println("===============================");
-  delay(1000);
+  Serial.println("Connecting Wifi...");
+  if (wifiMulti.run() == WL_CONNECTED) {
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
 
+  dht.begin();
 }
 void loop() {
   /* Reading Temp & Humadity Values of DHT */
@@ -68,9 +79,7 @@ void loop() {
   Serial.print(f);
   Serial.println("F  ");
 
-
   DateTime now = rtc.now();
-
   Serial.print(now.year(), DEC);
   int y = now.year();
   Serial.print('/');
@@ -99,7 +108,7 @@ void loop() {
     Serial.print("[HTTP] begin...\n");
     /* Make sure to replace the http by your API & replace the localhost by your IP address */
 
-    if (http.begin(client, "http://backend-embedded.herokuapp.com/add?bi="+board_id+"&temp="+String(t)+"&tempf="+String(f)+"&hum="+String(h)+"&aa="+d1+"&bb="+String(d2)+"&cc="+String(m)+"&dd="+String(y)+"&ee="+String(th)+"&ff="+String(tm)+"&gg="+String(ts))) { // HTTP
+    if (http.begin(client, "http://backend-embedded.herokuapp.com/add?bi=" + board_id + "&temp=" + String(t) + "&tempf=" + String(f) + "&hum=" + String(h) + "&aa=" + d1 + "&bb=" + String(d2) + "&cc=" + String(m) + "&dd=" + String(y) + "&ee=" + String(th) + "&ff=" + String(tm) + "&gg=" + String(ts))) { // HTTP
       Serial.print("[HTTP] GET...\n");
       // start connection and send HTTP header
       int httpCode = http.GET();
@@ -116,13 +125,20 @@ void loop() {
           digitalWrite(2, LOW);    // turn the LED off by making the voltage LOW
           delay(500);
         }
-      } else {
+      }
+      else {
         Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
       }
       http.end();
-    } else {
+    }
+    else {
       Serial.printf("[HTTP} Unable to connect\n");
     }
   }
+  else {
+    Serial.println("WiFi not connected!");
+    delay(1000);
+  }
+
   delay(1000);
 }
